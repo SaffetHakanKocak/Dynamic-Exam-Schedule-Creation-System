@@ -1,0 +1,20 @@
+# Python sanal ortamı
+.venv/
+venv/
+
+# Python cache ve geçici dosyalar
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ortam ve gizli dosyalar
+.env
+.DS_Store
+.idea/
+.vscode/
+
+# Build çıktıları
+dist/
+build/
+*.spec
