@@ -1,0 +1,5 @@
+PyQt5==5.15.11
+mysql-connector-python==9.0.0
+python-dotenv==1.0.1
+bcrypt==4.2.0
+openpyxl==3.1.5
