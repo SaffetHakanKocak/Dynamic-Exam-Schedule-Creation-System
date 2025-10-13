@@ -6,7 +6,6 @@ from typing import Tuple, Any, Iterable, List, Dict, Optional
 import mysql.connector
 import os
 
-# ---- Basit ENV okuma (dotenv yoksa bile çalışsın) ----
 DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
 DB_PORT = int(os.getenv("DB_PORT", "3306"))
 DB_USER = os.getenv("DB_USER", "root")
@@ -30,7 +29,7 @@ def tx():
     try:
         yield conn
         conn.commit()
-    except:
+    except Exception:
         conn.rollback()
         raise
     finally:

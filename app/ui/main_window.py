@@ -1,120 +1,118 @@
-# app/ui/main_window.py
 from PyQt5 import QtWidgets, QtCore
-from app.ui.dialogs.add_coord_dialog import AddCoordinatorDialog  # (yalnızca ADMIN menüsünde kullanılır)
+from app.ui.pages.login_page import LoginPage
+from app.ui.pages.dashboard_page import DashboardPage
+from app.ui.pages.classroom_page import ClassroomPage
+from app.ui.pages.course_upload_page import CourseUploadPage
+from app.ui.pages.student_upload_page import StudentUploadPage
+from app.ui.pages.student_list_page import StudentListPage
+from app.ui.pages.course_list_page import CourseListPage
+from app.ui.pages.exam_scheduler_page import ExamSchedulerPage  # ✅ eklendi
+
 
 class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self, user: dict):
+    def __init__(self):
         super().__init__()
-        self.user = user  # {"id","email","role","department_id"}
-        self.setWindowTitle(f"Exam Scheduler — {self.user.get('role', '')}")
-        self.resize(1200, 760)
+        self.setWindowTitle("Exam Scheduler — Modern")
+        self.resize(1280, 800)
+        self.setMinimumSize(1100, 700)
 
-        # ---- Merkez Bilgi ----
-        center = QtWidgets.QLabel(
-            f"Hoş geldin {self.user.get('email','')}\n"
-            f"Rol: {self.user.get('role','')}\n"
-            f"Bölüm ID: {self.user.get('department_id')}"
+        self.user = None
+        self.stack = QtWidgets.QStackedWidget()
+        self.setCentralWidget(self.stack)
+
+        # === SAYFALAR ===
+        self.login_page = LoginPage(self.on_login_success)
+        self.dashboard_page = None
+        self.classroom_page = None
+        self.course_upload_page = None
+        self.student_upload_page = None
+        self.student_list_page = None
+        self.course_list_page = None
+        self.exam_scheduler_page = None  # ✅ yeni sayfa
+
+        self.stack.addWidget(self.login_page)
+        self.stack.setCurrentWidget(self.login_page)
+
+    # ========================================================
+    # GİRİŞ BAŞARILI OLUNCA
+    # ========================================================
+    def on_login_success(self, user):
+        """Giriş başarılı olduğunda kullanıcıya ait tüm sayfaları hazırla"""
+        self.user = user
+
+        # === DASHBOARD ===
+        self.dashboard_page = DashboardPage(
+            on_navigate=self.on_navigate,
+            on_logout=self.logout
         )
-        center.setAlignment(QtCore.Qt.AlignCenter)
-        self.setCentralWidget(center)
+        self.dashboard_page.set_user(user)
+        self.stack.addWidget(self.dashboard_page)
 
-        # ---- Menü ve Kısayollar ----
-        self._build_menu()
-        self.statusBar().showMessage("Hazır")
+        # === ALT SAYFALAR ===
+        self.classroom_page = ClassroomPage(user, self.go_back_to_dashboard)
+        self.course_upload_page = CourseUploadPage(user, self.go_back_to_dashboard)
+        self.student_upload_page = StudentUploadPage(user, self.go_back_to_dashboard)
+        self.student_list_page = StudentListPage(self.go_back_to_dashboard)
+        self.course_list_page = CourseListPage(self.go_back_to_dashboard)
+        self.exam_scheduler_page = ExamSchedulerPage(user, self.go_back_to_dashboard)  # ✅ parametre güncel
 
-    # ---------- Role & Scope ----------
-    @property
-    def is_admin(self) -> bool:
-        """ADMIN her şeyi görür; COORD yalnız kendi bölümünü."""
-        return self.user.get("role") == "ADMIN"
+        # Hepsini stack’e ekle
+        for page in [
+            self.classroom_page,
+            self.course_upload_page,
+            self.student_upload_page,
+            self.student_list_page,
+            self.course_list_page,
+            self.exam_scheduler_page
+        ]:
+            self.stack.addWidget(page)
 
-    @property
-    def scope_department_id(self) -> int | None:
-        """ADMIN -> None (tüm bölümler), COORD -> kendi department_id'si."""
-        return None if self.is_admin else self.user.get("department_id")
+        # Ana sayfaya yönlendir
+        self.stack.setCurrentWidget(self.dashboard_page)
 
-    # ---------- Menüler ----------
-    def _build_menu(self):
-        mb = self.menuBar()
+    # ========================================================
+    # SAYFA GEÇİŞLERİ
+    # ========================================================
+    def on_navigate(self, page_name: str):
+        """Dashboard'dan diğer sayfalara geçiş kontrolü"""
+        mapping = {
+            "derslik": self.classroom_page,
+            "ders": self.course_upload_page,
+            "ogrenci": self.student_upload_page,
+            "ogrenci_listesi": self.student_list_page,
+            "ders_listesi": self.course_list_page,
+            "exam": self.exam_scheduler_page  # ✅ yeni yönlendirme
+        }
 
-        # Dosya
-        m_file = mb.addMenu("Dosya")
-        act_exit = QtWidgets.QAction("Çıkış", self)
-        act_exit.setShortcut("Ctrl+Q")
-        act_exit.triggered.connect(self.close)
-        m_file.addAction(act_exit)
+        if page_name in mapping:
+            self.stack.setCurrentWidget(mapping[page_name])
+        else:
+            QtWidgets.QMessageBox.information(
+                self,
+                "Henüz Eklenmedi",
+                f"'{page_name}' sayfası yakında eklenecek."
+            )
 
-        # Tanımlar (ADMIN + COORD)
-        m_defs = mb.addMenu("Tanımlar")
-        act_rooms    = QtWidgets.QAction("Derslikler", self)
-        act_courses  = QtWidgets.QAction("Dersler", self)
-        act_students = QtWidgets.QAction("Öğrenciler", self)
-        m_defs.addAction(act_rooms)
-        m_defs.addAction(act_courses)
-        m_defs.addAction(act_students)
-        act_rooms.triggered.connect(self.open_classrooms)
-        act_courses.triggered.connect(self.open_courses)
-        act_students.triggered.connect(self.open_students)
+    # ========================================================
+    # GERİ DÖNÜŞ
+    # ========================================================
+    def go_back_to_dashboard(self):
+        """Her alt sayfadan dashboard'a dönüş"""
+        if self.dashboard_page:
+            self.stack.setCurrentWidget(self.dashboard_page)
 
-        # Planlama (ADMIN + COORD)
-        m_plan = mb.addMenu("Planlama")
-        act_terms = QtWidgets.QAction("Sınav Dönemi & Timeslot", self)
-        act_sched = QtWidgets.QAction("Sınav Programı", self)
-        act_seats = QtWidgets.QAction("Oturma Planı", self)
-        m_plan.addAction(act_terms)
-        m_plan.addAction(act_sched)
-        m_plan.addAction(act_seats)
-        act_terms.triggered.connect(self.open_terms)
-        act_sched.triggered.connect(self.open_schedule)
-        act_seats.triggered.connect(self.open_seating)
-
-        # Yönetim (SADECE ADMIN)
-        if self.is_admin:
-            m_admin = mb.addMenu("Yönetim")
-            act_add_coord = QtWidgets.QAction("Bölüm Koordinatörü Ekle", self)
-            act_add_coord.triggered.connect(self.open_add_coord)
-            m_admin.addAction(act_add_coord)
-
-    # ---------- Ekran Açıcılar (şimdilik stub; sayfalar geldikçe buraya bağlayacağız) ----------
-    def open_classrooms(self):
-        QtWidgets.QMessageBox.information(
-            self, "Derslikler",
-            f"Derslik CRUD burada açılacak.\nscope_department_id={self.scope_department_id}"
-        )
-
-    def open_courses(self):
-        QtWidgets.QMessageBox.information(
-            self, "Dersler",
-            f"Ders CRUD burada açılacak.\nscope_department_id={self.scope_department_id}"
-        )
-
-    def open_students(self):
-        QtWidgets.QMessageBox.information(
-            self, "Öğrenciler",
-            f"Öğrenci CRUD burada açılacak.\nscope_department_id={self.scope_department_id}"
-        )
-
-    def open_terms(self):
-        QtWidgets.QMessageBox.information(
-            self, "Sınav Dönemi & Timeslot",
-            "Dönem oluşturma ve timeslot üretimi burada olacak."
-        )
-
-    def open_schedule(self):
-        QtWidgets.QMessageBox.information(
-            self, "Sınav Programı",
-            "Greedy yerleştirme + çakışma kontrolleri burada olacak."
-        )
-
-    def open_seating(self):
-        QtWidgets.QMessageBox.information(
-            self, "Oturma Planı",
-            "Salon/koltuk dağıtımı ve çıktı alma burada olacak."
+    # ========================================================
+    # ÇIKIŞ
+    # ========================================================
+    def logout(self):
+        """Kullanıcı çıkış işlemi"""
+        confirm = QtWidgets.QMessageBox.question(
+            self,
+            "Çıkış Onayı",
+            "Oturumdan çıkmak istediğinizden emin misiniz?",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
         )
 
-    # ---------- Yönetim İşlemleri ----------
-    def open_add_coord(self):
-        """Sadece ADMIN: Bölüm Koordinatörü ekleme dialogu."""
-        dlg = AddCoordinatorDialog(parent=self)
-        if dlg.exec_() == QtWidgets.QDialog.Accepted:
-            QtWidgets.QMessageBox.information(self, "Başarılı", "Koordinatör kaydedildi.")
+        if confirm == QtWidgets.QMessageBox.Yes:
+            self.user = None
+            self.stack.setCurrentWidget(self.login_page)
