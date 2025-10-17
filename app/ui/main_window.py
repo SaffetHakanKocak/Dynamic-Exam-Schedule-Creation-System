@@ -6,7 +6,8 @@ from app.ui.pages.course_upload_page import CourseUploadPage
 from app.ui.pages.student_upload_page import StudentUploadPage
 from app.ui.pages.student_list_page import StudentListPage
 from app.ui.pages.course_list_page import CourseListPage
-from app.ui.pages.exam_scheduler_page import ExamSchedulerPage  # ✅ eklendi
+from app.ui.pages.exam_scheduler_page import ExamSchedulerPage
+from app.ui.pages.exam_seating_page import ExamSeatingPage  # ✅ Yeni sayfa
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -28,7 +29,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.student_upload_page = None
         self.student_list_page = None
         self.course_list_page = None
-        self.exam_scheduler_page = None  # ✅ yeni sayfa
+        self.exam_scheduler_page = None
+        self.exam_seating_page = None  # ✅ Yeni oturma planı sayfası
 
         self.stack.addWidget(self.login_page)
         self.stack.setCurrentWidget(self.login_page)
@@ -54,7 +56,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.student_upload_page = StudentUploadPage(user, self.go_back_to_dashboard)
         self.student_list_page = StudentListPage(self.go_back_to_dashboard)
         self.course_list_page = CourseListPage(self.go_back_to_dashboard)
-        self.exam_scheduler_page = ExamSchedulerPage(user, self.go_back_to_dashboard)  # ✅ parametre güncel
+        self.exam_scheduler_page = ExamSchedulerPage(user, self.go_back_to_dashboard)
+        self.exam_seating_page = ExamSeatingPage(user, self.go_back_to_dashboard)  # ✅ eklendi
 
         # Hepsini stack’e ekle
         for page in [
@@ -63,7 +66,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.student_upload_page,
             self.student_list_page,
             self.course_list_page,
-            self.exam_scheduler_page
+            self.exam_scheduler_page,
+            self.exam_seating_page
         ]:
             self.stack.addWidget(page)
 
@@ -81,7 +85,8 @@ class MainWindow(QtWidgets.QMainWindow):
             "ogrenci": self.student_upload_page,
             "ogrenci_listesi": self.student_list_page,
             "ders_listesi": self.course_list_page,
-            "exam": self.exam_scheduler_page  # ✅ yeni yönlendirme
+            "exam": self.exam_scheduler_page,
+            "seating": self.exam_seating_page  # ✅ Yeni yönlendirme
         }
 
         if page_name in mapping:

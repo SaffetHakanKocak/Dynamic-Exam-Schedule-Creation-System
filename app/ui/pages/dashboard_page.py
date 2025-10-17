@@ -27,15 +27,16 @@ class DashboardPage(QtWidgets.QWidget):
         self.layout.setContentsMargins(50, 40, 50, 20)
         self.layout.setSpacing(20)
 
+        # === Başlık ===
         title = QtWidgets.QLabel("📋 Ana Kontrol Paneli")
         title.setFont(QtGui.QFont("Segoe UI", 20, QtGui.QFont.Bold))
         title.setAlignment(QtCore.Qt.AlignCenter)
+        self.layout.addWidget(title)
 
+        # === Kullanıcı Bilgisi ===
         self.info_label = QtWidgets.QLabel()
         self.info_label.setAlignment(QtCore.Qt.AlignCenter)
         self.info_label.setFont(QtGui.QFont("Segoe UI", 11))
-
-        self.layout.addWidget(title)
         self.layout.addWidget(self.info_label)
 
         # === ADMIN Koordinatör Ekle Butonu ===
@@ -107,15 +108,19 @@ class DashboardPage(QtWidgets.QWidget):
         self.btn_ogr = self.make_button("👨‍🎓 Öğrenci Listesi Yükle", lambda: self.try_open("ogrenci"))
         self.btn_ogr_list = self.make_button("📋 Öğrenci Listesi", lambda: self.on_navigate("ogrenci_listesi"))
         self.btn_ders_list = self.make_button("📘 Ders Listesi", lambda: self.on_navigate("ders_listesi"))
-        self.btn_exam = self.make_button("📅 Sınav Programı Oluştur", lambda: self.try_open("exam"))  # ✅ yeni
+        self.btn_exam = self.make_button("📅 Sınav Programı Oluştur", lambda: self.try_open("exam"))
+        self.btn_seating = self.make_button("🪑 Oturma Planı", lambda: self.try_open("seating"))  # ✅ Yeni buton
 
+        # === Butonları ekle ===
         self.other_buttons = [
             self.btn_derslik, self.btn_ders, self.btn_ogr,
-            self.btn_ogr_list, self.btn_ders_list, self.btn_exam  # ✅ eklendi
+            self.btn_ogr_list, self.btn_ders_list, self.btn_exam,
+            self.btn_seating
         ]
         for b in self.other_buttons:
             self.layout.addWidget(b)
 
+        # === Uyarı etiketi ===
         self.warning_label = QtWidgets.QLabel("")
         self.warning_label.setAlignment(QtCore.Qt.AlignCenter)
         self.warning_label.setFont(QtGui.QFont("Segoe UI", 10, QtGui.QFont.Bold))
@@ -186,11 +191,10 @@ class DashboardPage(QtWidgets.QWidget):
         enough_cls = self.has_enough_classrooms()
         is_admin = self.user and self.user["role"] == "ADMIN"
 
-        self.btn_ders.setEnabled(is_admin or enough_cls)
-        self.btn_ogr.setEnabled(is_admin or enough_cls)
-        self.btn_ogr_list.setEnabled(is_admin or enough_cls)
-        self.btn_ders_list.setEnabled(is_admin or enough_cls)
-        self.btn_exam.setEnabled(is_admin or enough_cls)  # ✅ eklendi
+        # Diğer sayfalara erişim kontrolü
+        for b in [self.btn_ders, self.btn_ogr, self.btn_ogr_list,
+                  self.btn_ders_list, self.btn_exam, self.btn_seating]:
+            b.setEnabled(is_admin or enough_cls)
 
         if not enough_cls and not is_admin:
             self.warning_label.setText("⚠️ En az 5 derslik girişi tamamlanmadan diğer alanlara erişemezsiniz.")

@@ -100,6 +100,14 @@ class CourseListPage(QtWidgets.QWidget):
         self.load_courses()
 
     # --------------------------------------------------------
+    # 🆕 SAYFA GÖSTERİLDİĞİNDE OTOMATİK YENİLEME
+    # --------------------------------------------------------
+    def showEvent(self, event):
+        """Sayfa her görüntülendiğinde ders listesini otomatik yeniler."""
+        super().showEvent(event)
+        self.load_courses()
+
+    # --------------------------------------------------------
     # DERSLERİ YÜKLEME
     # --------------------------------------------------------
     def load_courses(self):
