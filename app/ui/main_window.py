@@ -7,7 +7,9 @@ from app.ui.pages.student_upload_page import StudentUploadPage
 from app.ui.pages.student_list_page import StudentListPage
 from app.ui.pages.course_list_page import CourseListPage
 from app.ui.pages.exam_scheduler_page import ExamSchedulerPage
-from app.ui.pages.exam_seating_page import ExamSeatingPage  # ✅ Yeni sayfa
+from app.ui.pages.exam_seating_page import ExamSeatingPage  # ✅ Oturma planı sayfası
+from app.ui.pages.user_list_page import UserListPage         # ✅ Yeni kullanıcı listesi sayfası
+from app.ui.pages.coordinator_add_page import CoordinatorAddPage  # ✅ Yeni koordinatör ekleme sayfası
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -30,8 +32,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.student_list_page = None
         self.course_list_page = None
         self.exam_scheduler_page = None
-        self.exam_seating_page = None  # ✅ Yeni oturma planı sayfası
+        self.exam_seating_page = None
+        self.user_list_page = None
+        self.coord_add_page = None  # ✅ Koordinatör ekleme sayfası eklendi
 
+        # Login sayfasını stack'e ekle
         self.stack.addWidget(self.login_page)
         self.stack.setCurrentWidget(self.login_page)
 
@@ -52,12 +57,20 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # === ALT SAYFALAR ===
         self.classroom_page = ClassroomPage(user, self.go_back_to_dashboard)
+        self.classroom_page.classroom_added.connect(self.dashboard_page._update_accessibility)  # ✅ Derslik sinyali
+
         self.course_upload_page = CourseUploadPage(user, self.go_back_to_dashboard)
+        self.course_upload_page.courses_uploaded.connect(self.dashboard_page._update_accessibility)   # ✅ Ders sinyali
+
         self.student_upload_page = StudentUploadPage(user, self.go_back_to_dashboard)
-        self.student_list_page = StudentListPage(self.go_back_to_dashboard)
-        self.course_list_page = CourseListPage(self.go_back_to_dashboard)
+        self.student_upload_page.students_uploaded.connect(self.dashboard_page._update_accessibility) # ✅ Öğrenci sinyali
+
+        self.student_list_page = StudentListPage(user, self.go_back_to_dashboard)
+        self.course_list_page = CourseListPage(user, self.go_back_to_dashboard)
         self.exam_scheduler_page = ExamSchedulerPage(user, self.go_back_to_dashboard)
-        self.exam_seating_page = ExamSeatingPage(user, self.go_back_to_dashboard)  # ✅ eklendi
+        self.exam_seating_page = ExamSeatingPage(user, self.go_back_to_dashboard)
+        self.user_list_page = UserListPage(self.go_back_to_dashboard)     # ✅ Kayıtlı kullanıcılar
+        self.coord_add_page = CoordinatorAddPage(self.go_back_to_dashboard, main_window=self)  # ✅ Ana pencere referansı
 
         # Hepsini stack’e ekle
         for page in [
@@ -67,7 +80,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self.student_list_page,
             self.course_list_page,
             self.exam_scheduler_page,
-            self.exam_seating_page
+            self.exam_seating_page,
+            self.user_list_page,
+            self.coord_add_page
         ]:
             self.stack.addWidget(page)
 
@@ -86,10 +101,12 @@ class MainWindow(QtWidgets.QMainWindow):
             "ogrenci_listesi": self.student_list_page,
             "ders_listesi": self.course_list_page,
             "exam": self.exam_scheduler_page,
-            "seating": self.exam_seating_page  # ✅ Yeni yönlendirme
+            "seating": self.exam_seating_page,
+            "user_list": self.user_list_page,     # ✅ Kayıtlı kullanıcılar
+            "coord_add": self.coord_add_page,     # ✅ Koordinatör ekleme
         }
 
-        if page_name in mapping:
+        if page_name in mapping and mapping[page_name]:
             self.stack.setCurrentWidget(mapping[page_name])
         else:
             QtWidgets.QMessageBox.information(

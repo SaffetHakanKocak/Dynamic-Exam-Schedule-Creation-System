@@ -7,7 +7,7 @@ from app.db import fetchall, execute
 
 
 class ExamSchedulerService:
-    """Sınav Programı Oluşturma Servisi — Nihai Optimize Sürüm (tam kapsam + hata yönetimi)"""
+    """Sınav Programı Oluşturma Servisi — Nihai Optimize Sürüm (tam kapsam + detaylı hata mesajları)"""
 
     def __init__(self):
         self.errors = []
@@ -32,22 +32,27 @@ class ExamSchedulerService:
         self.errors.clear()
         self.generated_plan.clear()
 
+        # 🔹 Admin bölüm seçmeden başlatırsa uyarı
+        if not department_id:
+            self.errors.append("⚠️ Lütfen geçerli bir bölüm seçiniz.")
+            return []
+
         # 1️⃣ Tarih aralığı oluştur
         workdays = self._build_workdays(start_date, end_date, holidays)
         if not workdays:
-            self.errors.append("Sınav yapılabilecek gün bulunamadı (tatil dışı gün yok)!")
+            self.errors.append("❌ Seçilen tarih aralığında sınav yapılabilecek gün bulunamadı (tatil dışı gün yok).")
             return []
 
         # 2️⃣ Dersleri getir
         courses = self._load_courses_and_students(department_id, included_courses)
         if not courses:
-            self.errors.append("Hiç ders bulunamadı!")
+            self.errors.append("❌ Hiç ders bulunamadı! Lütfen Excel yüklemelerini kontrol edin.")
             return []
 
         # 3️⃣ Derslikleri getir
         rooms = self._load_classrooms(department_id)
         if not rooms:
-            self.errors.append("Bu bölüme ait derslik bulunamadı!")
+            self.errors.append("❌ Derslik bulunamadı — lütfen önce bölümünüze ait derslik ekleyin.")
             return []
 
         # ------------------------------------------------------------
@@ -97,13 +102,13 @@ class ExamSchedulerService:
                         if no_overlap and self._overlaps_with_existing(
                             placed_courses, target_day, slot_start, slot_end
                         ):
-                            raise Exception("Zaman çakışması")
+                            raise Exception(f"Ders {course['code']} zaman çakışması (slot dolu).")
 
                         # 2️⃣ Öğrenci çakışması kontrolü
                         if self._has_student_conflict(
                             course["id"], placed_courses, target_day, slot_start, slot_end
                         ):
-                            raise Exception("Öğrenci çakışması")
+                            raise Exception(f"Öğrenci çakışması: {course['code']} sınavı başka bir sınavla aynı anda olamaz.")
 
                         # 3️⃣ Derslik ataması (kapasite ve slot uygunluğu)
                         assigned_rooms = self._assign_rooms(
@@ -116,7 +121,10 @@ class ExamSchedulerService:
                         )
 
                         if not assigned_rooms:
-                            raise Exception("Derslik kapasitesi yetersiz")
+                            total_capacity = sum(r["capacity"] for r in rooms)
+                            raise Exception(
+                                f"Derslik kapasitesi yetersiz (ihtiyaç: {course['student_count']}, mevcut toplam: {total_capacity})"
+                            )
 
                         # ✅ Başarılı yerleştirme
                         placed_courses.append({
@@ -131,7 +139,7 @@ class ExamSchedulerService:
                         break
 
                     except Exception as e:
-                        last_error = f"{course['code']} yerleştirilemedi ({str(e)})."
+                        last_error = f"Ders {course['code']} ({course['name']}) yerleştirilemedi: {e}"
                         continue
 
                 if not placed and last_error:

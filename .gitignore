@@ -219,3 +219,5 @@ __marimo__/
 __pycache__/
 *.py[cod]
 *.cpython-*
+
+*.pyc

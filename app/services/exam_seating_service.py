@@ -87,6 +87,12 @@ class ExamSeatingService:
         En son oluşturulan sınav dönemine ait sınavları döndürür.
         Eğer exam_term_id eşleşmesi yoksa tarih bazlı yedek kontrol yapılır.
         """
+
+        # 🔥 Admin bölüm seçmeden çağırırsa hata vermesin
+        if not department_id:
+            print("⚠️ Bölüm ID boş, sınav listesi yüklenmedi (admin henüz seçim yapmadı).")
+            return []
+
         latest_term = fetchone("""
             SELECT id, date_start, date_end
             FROM exam_terms
@@ -117,7 +123,6 @@ class ExamSeatingService:
 
         # Eğer exam_term_id bağlantısı yoksa tarih aralığına göre getir
         if not exams:
-            print("ℹ️ Term ID üzerinden sınav bulunamadı, tarih aralığına göre aranıyor...")
             exams = fetchall("""
                 SELECT ex.id, c.code AS course_code, c.name AS course_name,
                        t.starts_at, t.ends_at

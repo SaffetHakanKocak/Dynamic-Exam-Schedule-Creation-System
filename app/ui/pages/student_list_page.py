@@ -3,12 +3,16 @@ from app.services.student_course_summary_service import StudentCourseSummaryServ
 
 
 class StudentListPage(QtWidgets.QWidget):
-    def __init__(self, go_back):
+    def __init__(self, user, go_back):
         super().__init__()
+        self.user = user  # ✅ Kullanıcı bilgisi eklendi (admin/koord ayrımı için)
         self.go_back = go_back
         self.service = StudentCourseSummaryService()
         self.init_ui()
 
+    # --------------------------------------------------------
+    # UI OLUŞTURMA
+    # --------------------------------------------------------
     def init_ui(self):
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -52,6 +56,7 @@ class StudentListPage(QtWidgets.QWidget):
         self.search_box.setFont(QtGui.QFont("Segoe UI", 11))
         self.search_btn = QtWidgets.QPushButton("🔍 Ara")
         self.search_btn.setFixedWidth(120)
+        self.search_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
         self.search_btn.setStyleSheet("""
             QPushButton {
                 background-color: #27ae60;
@@ -94,6 +99,9 @@ class StudentListPage(QtWidgets.QWidget):
         """)
         layout.addWidget(self.table, stretch=1)
 
+    # --------------------------------------------------------
+    # ÖĞRENCİ ARAMA (Admin / Koordinatör Ayrımı)
+    # --------------------------------------------------------
     def search_student(self):
         number = self.search_box.text().strip()
         if not number:
@@ -101,20 +109,31 @@ class StudentListPage(QtWidgets.QWidget):
             return
 
         try:
-            results = self.service.get_by_student_number(number)
+            # ✅ Admin tüm bölümleri görebilir, koordinatör sadece kendi bölümünü
+            role = self.user.get("role", "").strip().upper()
+            if role == "ADMIN":
+                results = self.service.get_by_student_number(number)
+            else:
+                dept_id = self.user.get("department_id")
+                results = self.service.get_by_student_number(number, dept_id)
+
+            # Sonuç yoksa
             if not results:
-                self.result_label.setText(f"❌ {number} numaralı öğrenci bulunamadı.")
-                self.result_label.setStyleSheet("color: red;")
+                self.result_label.setText(f"❌ {number} numaralı öğrenci bulunamadı veya erişim yetkiniz yok.")
+                self.result_label.setStyleSheet("color: red; font-weight:bold;")
                 self.table.setRowCount(0)
                 return
 
+            # Sonuç varsa tabloyu doldur
             name = results[0]["Ad Soyad"]
             self.result_label.setText(f"👤 Öğrenci: <b>{name}</b>  |  🎓 Aldığı Dersler:")
-            self.result_label.setStyleSheet("color: #2c3e50;")
+            self.result_label.setStyleSheet("color: #2c3e50; font-weight:bold;")
 
             self.table.setRowCount(len(results))
             for i, r in enumerate(results):
                 self.table.setItem(i, 0, QtWidgets.QTableWidgetItem(r["Dersin Kodu"]))
                 self.table.setItem(i, 1, QtWidgets.QTableWidgetItem(r["Aldığı Ders"]))
+
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "Hata", f"Arama başarısız:\n{e}")
+            print("🟥 Öğrenci sorgu hatası:", e)

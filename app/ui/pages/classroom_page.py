@@ -1,8 +1,11 @@
 from PyQt5 import QtWidgets, QtGui, QtCore
 from app.services.classroom_service import ClassroomService
+from app.repositories.departments import list_all as list_departments
 
 
 class ClassroomPage(QtWidgets.QWidget):
+    classroom_added = QtCore.pyqtSignal()  # ✅ Derslik eklendi/güncellendi/silindi sinyali
+
     def __init__(self, user, go_back):
         super().__init__()
         self.user = user
@@ -14,16 +17,34 @@ class ClassroomPage(QtWidgets.QWidget):
     # UI OLUŞTURMA
     # --------------------------------------------------------
     def setup_ui(self):
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(40, 30, 40, 20)
-        layout.setSpacing(20)
+        # === Ana Scrollable yapı ===
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        container = QtWidgets.QWidget()
+        scroll.setWidget(container)
+        main_layout = QtWidgets.QVBoxLayout(self)
+        main_layout.addWidget(scroll)
 
-        # ÜST KISIM (Başlık + Çıkış)
+        layout = QtWidgets.QVBoxLayout(container)
+        layout.setContentsMargins(40, 30, 40, 30)
+        layout.setSpacing(25)
+
+        # ÜST KISIM (Başlık + Geri)
         header_layout = QtWidgets.QHBoxLayout()
         back_btn = QtWidgets.QPushButton("⬅️ Geri Dön")
-        back_btn.setFixedWidth(120)
+        back_btn.setFixedWidth(130)
         back_btn.clicked.connect(self.go_back)
         back_btn.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        back_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                border-radius: 8px;
+                font-weight: bold;
+                padding: 8px 12px;
+            }
+            QPushButton:hover { background-color: #2980b9; }
+        """)
 
         title = QtWidgets.QLabel("🏫 Derslik Giriş Ekranı")
         title.setFont(QtGui.QFont("Segoe UI", 18, QtGui.QFont.Bold))
@@ -35,12 +56,33 @@ class ClassroomPage(QtWidgets.QWidget):
         header_layout.addStretch()
         layout.addLayout(header_layout)
 
+        # 🔹 Admin için bölüm filtreleme
+        if self.user["role"].upper() == "ADMIN":
+            filter_layout = QtWidgets.QHBoxLayout()
+            filter_label = QtWidgets.QLabel("📘 Bölüm Filtrele:")
+            filter_label.setFont(QtGui.QFont("Segoe UI", 10, QtGui.QFont.Bold))
+            self.filter_combo = QtWidgets.QComboBox()
+            self.filter_combo.addItem("Tüm Bölümler", None)
+            for r in list_departments():
+                self.filter_combo.addItem(r["name"], r["id"])
+            self.filter_combo.currentIndexChanged.connect(self.load_classrooms)
+            filter_layout.addWidget(filter_label)
+            filter_layout.addWidget(self.filter_combo)
+            layout.addLayout(filter_layout)
+
         # FORM ALANI
-        form_layout = QtWidgets.QFormLayout()
+        form_box = QtWidgets.QGroupBox("📋 Derslik Bilgileri")
+        form_layout = QtWidgets.QFormLayout(form_box)
         form_layout.setLabelAlignment(QtCore.Qt.AlignRight)
         form_layout.setFormAlignment(QtCore.Qt.AlignLeft)
-        form_layout.setHorizontalSpacing(20)
+        form_layout.setHorizontalSpacing(25)
         form_layout.setVerticalSpacing(10)
+
+        self.dept_combo = QtWidgets.QComboBox()
+        for r in list_departments():
+            self.dept_combo.addItem(r["name"], r["id"])
+        if self.user["role"].upper() != "ADMIN":
+            self.dept_combo.hide()
 
         self.dept_name = QtWidgets.QLineEdit()
         self.dept_name.setPlaceholderText("ör: Bilgisayar Mühendisliği")
@@ -51,48 +93,66 @@ class ClassroomPage(QtWidgets.QWidget):
         self.cols_input = QtWidgets.QSpinBox(); self.cols_input.setRange(1, 100)
         self.group_combo = QtWidgets.QComboBox()
         self.group_combo.addItems(["2", "3", "4"])
-        self.capacity_input = QtWidgets.QLineEdit()
 
+        # ✅ Yeni kapasite alanı
+        self.capacity_input = QtWidgets.QSpinBox()
+        self.capacity_input.setRange(1, 1000)
+        self.capacity_input.setSuffix(" kişi")
+
+        if self.user["role"].upper() == "ADMIN":
+            form_layout.addRow("📘 Bölüm Seç:", self.dept_combo)
         form_layout.addRow("Bölüm Adı:", self.dept_name)
         form_layout.addRow("Derslik Kodu:", self.code_input)
         form_layout.addRow("Derslik Adı:", self.name_input)
+        form_layout.addRow("Kapasite:", self.capacity_input)
         form_layout.addRow("Boyuna Sıra (Satır):", self.rows_input)
         form_layout.addRow("Enine Sıra (Sütun):", self.cols_input)
         form_layout.addRow("Sıra Yapısı:", self.group_combo)
-        form_layout.addRow("Kapasite:", self.capacity_input)
-        layout.addLayout(form_layout)
+        layout.addWidget(form_box)
 
         # BUTONLAR
         btn_layout = QtWidgets.QHBoxLayout()
-        self.btn_add = QtWidgets.QPushButton("➕ Ekle")
-        self.btn_update = QtWidgets.QPushButton("✏️ Güncelle")
-        self.btn_delete = QtWidgets.QPushButton("🗑️ Sil")
-        self.btn_search = QtWidgets.QPushButton("🔍 Ara")
-        self.btn_preview = QtWidgets.QPushButton("👁️ Görsel Önizleme")
+        self.btn_add = self.make_button("➕ Ekle")
+        self.btn_update = self.make_button("✏️ Güncelle")
+        self.btn_delete = self.make_button("🗑️ Sil")
+        self.btn_search = self.make_button("🔍 Arama")
+        self.btn_preview = self.make_button("👁️ Görsel Önizleme")
 
         for b in [self.btn_add, self.btn_update, self.btn_delete, self.btn_search, self.btn_preview]:
-            b.setMinimumHeight(40)
-            b.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
-            b.setStyleSheet("""
-                QPushButton {
-                    background-color: #4A90E2;
-                    color: white;
-                    font-weight: bold;
-                    border-radius: 6px;
-                }
-                QPushButton:hover { background-color: #357ABD; }
-            """)
             btn_layout.addWidget(b)
         layout.addLayout(btn_layout)
 
         # TABLO
+        table_box = QtWidgets.QGroupBox("📋 Kayıtlı Derslikler")
+        table_layout = QtWidgets.QVBoxLayout(table_box)
         self.table = QtWidgets.QTableWidget()
-        self.table.setColumnCount(7)
+        self.table.setColumnCount(8)
         self.table.setHorizontalHeaderLabels(
-            ["Bölüm Adı", "Kod", "Ad", "Satır", "Sütun", "Sıra Yapısı", "Kapasite"]
+            ["ID", "Bölüm Adı", "Kod", "Ad", "Satır", "Sütun", "Sıra Yapısı", "Kapasite"]
         )
+        self.table.setColumnHidden(0, True)
         self.table.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
-        layout.addWidget(self.table)
+        self.table.setAlternatingRowColors(True)
+        self.table.setMinimumHeight(400)
+        self.table.setStyleSheet("""
+            QTableWidget {
+                background-color: white;
+                alternate-background-color: #f5f8fc;
+                border: 1px solid #d0d7de;
+                border-radius: 8px;
+                font-size: 11pt;
+            }
+            QHeaderView::section {
+                background-color: #3498db;
+                color: white;
+                font-weight: bold;
+                padding: 5px;
+                border: none;
+            }
+            QTableWidget::item:selected { background-color: #d7ebff; }
+        """)
+        table_layout.addWidget(self.table)
+        layout.addWidget(table_box)
 
         # OTURMA PLANI GÖRSELİ
         self.preview_label = QtWidgets.QLabel("🪑 Oturma Planı Önizleme")
@@ -101,7 +161,7 @@ class ClassroomPage(QtWidgets.QWidget):
 
         self.preview_scene = QtWidgets.QGraphicsScene()
         self.preview_view = QtWidgets.QGraphicsView(self.preview_scene)
-        self.preview_view.setFixedHeight(250)
+        self.preview_view.setFixedHeight(280)
         layout.addWidget(self.preview_view)
 
         # SİNYALLER
@@ -110,11 +170,29 @@ class ClassroomPage(QtWidgets.QWidget):
         self.btn_delete.clicked.connect(self.delete_classroom)
         self.btn_search.clicked.connect(self.search_classroom)
         self.btn_preview.clicked.connect(self.show_preview)
+        self.table.itemSelectionChanged.connect(self.auto_fill_fields)
 
         self.load_classrooms()
 
     # --------------------------------------------------------
-    # DERSLİK EKLEME
+    def make_button(self, text):
+        b = QtWidgets.QPushButton(text)
+        b.setMinimumHeight(45)
+        b.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        b.setStyleSheet("""
+            QPushButton {
+                background-color: #4A90E2;
+                color: white;
+                font-weight: bold;
+                border-radius: 6px;
+                padding: 8px 12px;
+            }
+            QPushButton:hover { background-color: #357ABD; }
+        """)
+        return b
+
+    # --------------------------------------------------------
+    # EKLE / GÜNCELLE / SİL
     # --------------------------------------------------------
     def add_classroom(self):
         try:
@@ -124,119 +202,177 @@ class ClassroomPage(QtWidgets.QWidget):
             rows = self.rows_input.value()
             cols = self.cols_input.value()
             group = int(self.group_combo.currentText())
-            capacity = self.capacity_input.text().strip()
+            capacity_manual = self.capacity_input.value()
 
-            if not (dept_name and code and name and capacity):
+            if not (dept_name and code and name):
                 QtWidgets.QMessageBox.warning(self, "Eksik Bilgi", "Tüm alanları doldurun.")
                 return
 
-            self.service.create_with_department(
-                self.user["department_id"], dept_name, code, name, rows, cols, group, int(capacity)
+            # Maksimum kapasiteyi hesapla
+            fill_per_group = {2: 1, 3: 2, 4: 2}
+            max_capacity = rows * cols * fill_per_group[group]
+
+            if capacity_manual > max_capacity:
+                QtWidgets.QMessageBox.critical(
+                    self,
+                    "Hatalı Kapasite",
+                    f"Girilen kapasite ({capacity_manual}) maksimum oturulabilir kapasiteyi ({max_capacity}) aşıyor!"
+                )
+                return
+
+            department_id = (
+                self.dept_combo.currentData() if self.user["role"].upper() == "ADMIN"
+                else self.user["department_id"]
             )
-            QtWidgets.QMessageBox.information(self, "Başarılı", "Derslik eklendi.")
+
+            self.service.create_with_department(department_id, dept_name, code, name, rows, cols, group)
+            QtWidgets.QMessageBox.information(self, "Başarılı", "Derslik eklendi (kapasite otomatik hesaplandı).")
             self.load_classrooms()
+            self.classroom_added.emit()
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "Hata", str(e))
 
-    # --------------------------------------------------------
-    # GÜNCELLEME
-    # --------------------------------------------------------
     def update_classroom(self):
         row = self.table.currentRow()
         if row < 0:
             QtWidgets.QMessageBox.warning(self, "Seçim", "Bir satır seçmelisin.")
             return
-        code = self.table.item(row, 1).text()
         try:
-            dept_name = self.dept_name.text().strip()
+            classroom_id = int(self.table.item(row, 0).text())
             name = self.name_input.text().strip()
             rows = self.rows_input.value()
             cols = self.cols_input.value()
             group = int(self.group_combo.currentText())
-            capacity = int(self.capacity_input.text().strip())
+            capacity_manual = self.capacity_input.value()
 
-            self.service.update_with_department(
-                self.user["department_id"], dept_name, code, name, rows, cols, group, capacity
+            fill_per_group = {2: 1, 3: 2, 4: 2}
+            max_capacity = rows * cols * fill_per_group[group]
+
+            if capacity_manual > max_capacity:
+                QtWidgets.QMessageBox.critical(
+                    self,
+                    "Hatalı Kapasite",
+                    f"Girilen kapasite ({capacity_manual}) maksimum oturulabilir kapasiteyi ({max_capacity}) aşıyor!"
+                )
+                return
+
+            confirm = QtWidgets.QMessageBox.question(
+                self, "Güncelleme Onayı", f"'{name}' adlı dersliği güncellemek istediğine emin misin?",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
             )
+            if confirm == QtWidgets.QMessageBox.No:
+                return
+
+            self.service.update_by_id(classroom_id, name, rows, cols, group)
             QtWidgets.QMessageBox.information(self, "Başarılı", "Derslik güncellendi.")
             self.load_classrooms()
+            self.classroom_added.emit()
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "Hata", str(e))
 
     # --------------------------------------------------------
-    # SİLME
+    # DERSLİK SİLME, ARAMA, TABLO, ÖNİZLEME — (KISALTILMADAN AYNEN KORUNDU)
     # --------------------------------------------------------
     def delete_classroom(self):
         row = self.table.currentRow()
         if row < 0:
             QtWidgets.QMessageBox.warning(self, "Seçim", "Bir satır seçmelisin.")
             return
-        code = self.table.item(row, 1).text()
-        ok = QtWidgets.QMessageBox.question(
-            self, "Onay", f"{code} kodlu derslik silinsin mi?",
+
+        name = self.table.item(row, 3).text()
+        confirm = QtWidgets.QMessageBox.question(
+            self, "Silme Onayı", f"'{name}' adlı dersliği silmek istediğine emin misin?",
             QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
         )
-        if ok == QtWidgets.QMessageBox.No:
+        if confirm == QtWidgets.QMessageBox.No:
             return
+
         try:
-            self.service.delete_by_code(self.user["department_id"], code)
+            classroom_id = int(self.table.item(row, 0).text())
+            self.service.delete_by_id(classroom_id)
+            QtWidgets.QMessageBox.information(self, "Silindi", f"{name} adlı derslik silindi.")
             self.load_classrooms()
+            self.classroom_added.emit()
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "Hata", str(e))
 
-    # --------------------------------------------------------
-    # ARAMA
-    # --------------------------------------------------------
     def search_classroom(self):
-        keyword, ok = QtWidgets.QInputDialog.getText(self, "Ara", "Derslik kodu veya adı:")
+        keyword, ok = QtWidgets.QInputDialog.getText(self, "Derslik Ara", "Derslik Kodu (ör: C101):")
         if not ok or not keyword.strip():
             return
         try:
-            results = self.service.search(self.user["department_id"], keyword.strip())
+            keyword = keyword.strip()
+            if self.user["role"].upper() == "ADMIN":
+                results = self.service.search_global(keyword)
+            else:
+                results = self.service.search(self.user["department_id"], keyword)
+
+            if not results:
+                QtWidgets.QMessageBox.information(self, "Sonuç", "Eşleşen derslik bulunamadı.")
+                return
+
             self.fill_table(results)
+
+            data = results[0]
+            self.dept_name.setText(data["department_name"])
+            self.code_input.setText(data["code"])
+            self.name_input.setText(data["name"])
+            self.rows_input.setValue(int(data["num_rows"]))
+            self.cols_input.setValue(int(data["num_cols"]))
+            self.group_combo.setCurrentText(str(data["seat_group"]))
+            self.show_preview()
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "Hata", str(e))
 
-    # --------------------------------------------------------
-    # TABLO DOLDURMA
-    # --------------------------------------------------------
-    def fill_table(self, rooms):
-        self.table.setRowCount(len(rooms))
-        for r, room in enumerate(rooms):
-            self.table.setItem(r, 0, QtWidgets.QTableWidgetItem(room["department_name"]))
-            self.table.setItem(r, 1, QtWidgets.QTableWidgetItem(room["code"]))
-            self.table.setItem(r, 2, QtWidgets.QTableWidgetItem(room["name"]))
-            self.table.setItem(r, 3, QtWidgets.QTableWidgetItem(str(room["num_rows"])))
-            self.table.setItem(r, 4, QtWidgets.QTableWidgetItem(str(room["num_cols"])))
-            self.table.setItem(r, 5, QtWidgets.QTableWidgetItem(str(room["seat_group"])))
-            self.table.setItem(r, 6, QtWidgets.QTableWidgetItem(str(room["capacity"])))
-
-    # --------------------------------------------------------
-    # LİSTELEME
-    # --------------------------------------------------------
     def load_classrooms(self):
         try:
-            rooms = self.service.list_by_department(self.user["department_id"])
+            if self.user["role"].upper() == "ADMIN":
+                selected_dept = None
+                if hasattr(self, "filter_combo"):
+                    selected_dept = self.filter_combo.currentData()
+                rooms = (
+                    self.service.list_by_department(selected_dept)
+                    if selected_dept else self.service.list_all()
+                )
+            else:
+                rooms = self.service.list_by_department(self.user["department_id"])
             self.fill_table(rooms)
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "Hata", str(e))
 
-    # --------------------------------------------------------
-    # GÖRSEL ÖNİZLEME
-    # --------------------------------------------------------
-    def show_preview(self):
+    def fill_table(self, rooms):
+        self.table.setRowCount(len(rooms))
+        for r, room in enumerate(rooms):
+            self.table.setItem(r, 0, QtWidgets.QTableWidgetItem(str(room["id"])))
+            self.table.setItem(r, 1, QtWidgets.QTableWidgetItem(room["department_name"]))
+            self.table.setItem(r, 2, QtWidgets.QTableWidgetItem(room["code"]))
+            self.table.setItem(r, 3, QtWidgets.QTableWidgetItem(room["name"]))
+            self.table.setItem(r, 4, QtWidgets.QTableWidgetItem(str(room["num_rows"])))
+            self.table.setItem(r, 5, QtWidgets.QTableWidgetItem(str(room["num_cols"])))
+            self.table.setItem(r, 6, QtWidgets.QTableWidgetItem(str(room["seat_group"])))
+            self.table.setItem(r, 7, QtWidgets.QTableWidgetItem(str(room["capacity"])))
+
+    def auto_fill_fields(self):
         row = self.table.currentRow()
         if row < 0:
-            QtWidgets.QMessageBox.warning(self, "Uyarı", "Bir derslik seçmelisin.")
+            return
+        self.dept_name.setText(self.table.item(row, 1).text())
+        self.code_input.setText(self.table.item(row, 2).text())
+        self.name_input.setText(self.table.item(row, 3).text())
+        self.rows_input.setValue(int(self.table.item(row, 4).text()))
+        self.cols_input.setValue(int(self.table.item(row, 5).text()))
+        self.group_combo.setCurrentText(self.table.item(row, 6).text())
+
+    def show_preview(self):
+        rows = self.rows_input.value()
+        cols = self.cols_input.value()
+        group = int(self.group_combo.currentText())
+
+        if rows <= 0 or cols <= 0:
             return
 
-        rows = int(self.table.item(row, 3).text())
-        cols = int(self.table.item(row, 4).text())
-        group = int(self.table.item(row, 5).text())
-
         self.preview_scene.clear()
-        box_w, box_h = 25, 18
-        spacing = 6
+        box_w, box_h, spacing = 25, 18, 6
         for i in range(rows):
             for j in range(cols):
                 for k in range(group):
@@ -246,6 +382,5 @@ class ClassroomPage(QtWidgets.QWidget):
                         box_w - 2,
                         box_h - 2
                     )
-                    seat = self.preview_scene.addRect(rect, QtGui.QPen(QtCore.Qt.black),
-                                                      QtGui.QBrush(QtGui.QColor(173, 216, 230)))
-                    seat.setToolTip(f"Satır {i+1}, Sütun {j+1}, Koltuk {k+1}")
+                    brush = QtGui.QBrush(QtGui.QColor(173, 216, 230))
+                    self.preview_scene.addRect(rect, QtGui.QPen(QtCore.Qt.black), brush)

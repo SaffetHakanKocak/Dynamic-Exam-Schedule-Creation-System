@@ -3,8 +3,9 @@ from app.services.student_course_summary_service import StudentCourseSummaryServ
 
 
 class CourseListPage(QtWidgets.QWidget):
-    def __init__(self, go_back):
+    def __init__(self, user, go_back):
         super().__init__()
+        self.user = user  # ✅ Kullanıcı bilgisi eklendi (admin / koordinatör kontrolü)
         self.go_back = go_back
         self.service = StudentCourseSummaryService()
         self.init_ui()
@@ -113,7 +114,14 @@ class CourseListPage(QtWidgets.QWidget):
     def load_courses(self):
         """Tüm dersleri sol listeye yükler."""
         try:
-            courses = self.service.list_all_courses()
+            # ✅ Admin tüm dersleri görür, Koordinatör sadece kendi bölümünü
+            role = self.user.get("role", "").strip().upper()
+            if role == "ADMIN":
+                courses = self.service.list_all_courses()
+            else:
+                dept_id = self.user.get("department_id")
+                courses = self.service.list_courses_by_department(dept_id)
+
             self.course_list.clear()
 
             if not courses:
@@ -143,7 +151,14 @@ class CourseListPage(QtWidgets.QWidget):
         """Listeden bir ders seçildiğinde o dersi alan öğrencileri getirir."""
         code = item.data(QtCore.Qt.UserRole)
         try:
-            students = self.service.get_by_course_code(code)
+            # ✅ Admin tüm öğrencileri görür, Koordinatör sadece kendi bölümünü
+            role = self.user.get("role", "").strip().upper()
+            if role == "ADMIN":
+                students = self.service.get_by_course_code(code)
+            else:
+                dept_id = self.user.get("department_id")
+                students = self.service.get_by_course_code(code, dept_id)
+
             self.table.setRowCount(len(students))
 
             if not students:

@@ -1,5 +1,5 @@
 from PyQt5 import QtWidgets, QtGui, QtCore
-from app.db import fetchone
+from app.db import fetchone, fetchall
 from app.repositories.departments import list_all as list_departments
 from app.repositories.users_admin import create_coord, email_exists
 import bcrypt
@@ -13,11 +13,43 @@ class DashboardPage(QtWidgets.QWidget):
         self.on_logout = on_logout
         self.setup_ui()
 
+    # --------------------------------------------------------
+    # KULLANICI AYARLAMA (ROL BAZLI PANEL VE MESAJ)
+    # --------------------------------------------------------
     def set_user(self, user):
         self.user = user
-        self.info_label.setText(f"Hoş geldin, {user['email']} ({user['role']})")
+
+        role = user["role"].strip().upper()
+        email = user.get("email", "")
+
+        # 🎯 Rol bazlı panel başlığı ve hoş geldin mesajı
+        if role == "ADMIN":
+            panel_title = "👑 ADMİN PANELİ"
+            greeting = (
+                f"<b>Hoş geldin</b>, <span style='color:#2E86DE'>{email}</span> 👋<br>"
+            )
+        elif role == "COORD":
+            panel_title = "🎓 KOORDİNATÖR PANELİ"
+            greeting = (
+                f"<b>Merhaba</b>, <span style='color:#27AE60'>{email}</span> 🎓<br>"
+            )
+        else:
+            panel_title = "📋 Kullanıcı Paneli"
+            greeting = f"<b>Hoş geldin</b>, <span style='color:#2E86DE'>{email}</span>"
+
+        self.title_label.setText(panel_title)
+        self.info_label.setText(greeting)
         self._update_role_visibility()
         self._update_accessibility()
+
+    # --------------------------------------------------------
+    # ROL GÖRÜNÜRLÜĞÜ GÜNCELLEME
+    # --------------------------------------------------------
+    def _update_role_visibility(self):
+        """Admin kullanıcıya özel butonları görünür yapar"""
+        is_admin = self.user and self.user["role"].strip().upper() == "ADMIN"
+        self.btn_addcoord.setVisible(is_admin)
+        self.btn_show_users.setVisible(is_admin)
 
     # --------------------------------------------------------
     # ANA ARAYÜZ
@@ -27,21 +59,31 @@ class DashboardPage(QtWidgets.QWidget):
         self.layout.setContentsMargins(50, 40, 50, 20)
         self.layout.setSpacing(20)
 
-        # === Başlık ===
-        title = QtWidgets.QLabel("📋 Ana Kontrol Paneli")
-        title.setFont(QtGui.QFont("Segoe UI", 20, QtGui.QFont.Bold))
-        title.setAlignment(QtCore.Qt.AlignCenter)
-        self.layout.addWidget(title)
+        # === Panel Başlığı ===
+        self.title_label = QtWidgets.QLabel("📋 Ana Kontrol Paneli")
+        self.title_label.setFont(QtGui.QFont("Segoe UI", 20, QtGui.QFont.Bold))
+        self.title_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.layout.addWidget(self.title_label)
 
         # === Kullanıcı Bilgisi ===
-        self.info_label = QtWidgets.QLabel()
+        self.info_label = QtWidgets.QLabel("")
         self.info_label.setAlignment(QtCore.Qt.AlignCenter)
         self.info_label.setFont(QtGui.QFont("Segoe UI", 11))
+        self.info_label.setStyleSheet("color: #333;")
         self.layout.addWidget(self.info_label)
 
         # === ADMIN Koordinatör Ekle Butonu ===
-        self.btn_addcoord = self.make_button("🧑‍💼 Koordinatör Ekle", self.toggle_addcoord_form)
+        self.btn_addcoord = self.make_button(
+            "🧑‍💼 Koordinatör Ekle", lambda: self.on_navigate("coord_add")
+        )
         self.btn_addcoord.setMinimumHeight(50)
+
+        # === ADMIN Kayıtlı Kullanıcıları Görüntüle Butonu ===
+        self.btn_show_users = self.make_button(
+            "👥 Kayıtlı Kullanıcıları Görüntüle", lambda: self.on_navigate("user_list")
+        )
+        self.btn_show_users.setMinimumHeight(45)
+        self.btn_show_users.hide()  # sadece admin görür
 
         # === Inline Form ===
         self.addcoord_frame = QtWidgets.QFrame()
@@ -87,7 +129,7 @@ class DashboardPage(QtWidgets.QWidget):
         self.message_label.setAlignment(QtCore.Qt.AlignCenter)
         vform.addWidget(self.message_label)
 
-        # Butonlar
+        # Kaydet / Vazgeç Butonları
         btn_box = QtWidgets.QHBoxLayout()
         btn_save = QtWidgets.QPushButton("Kaydet")
         btn_cancel = QtWidgets.QPushButton("Vazgeç")
@@ -99,23 +141,31 @@ class DashboardPage(QtWidgets.QWidget):
         btn_save.clicked.connect(self.save_coordinator)
         btn_cancel.clicked.connect(self.toggle_addcoord_form)
 
+        # === Arayüze Ekle ===
         self.layout.addWidget(self.btn_addcoord)
+        self.layout.addWidget(self.btn_show_users)
         self.layout.addWidget(self.addcoord_frame)
 
-        # === DİĞER BUTONLAR ===
+        # === Kullanıcı Listesi Tablosu ===
+        self.user_table = QtWidgets.QTableWidget()
+        self.user_table.setColumnCount(4)
+        self.user_table.setHorizontalHeaderLabels(["ID", "E-posta", "Rol", "Bölüm"])
+        self.user_table.horizontalHeader().setStretchLastSection(True)
+        self.user_table.setVisible(False)
+        self.layout.addWidget(self.user_table)
+
+        # === Diğer Butonlar ===
         self.btn_derslik = self.make_button("🏫 Derslik Girişi", lambda: self.on_navigate("derslik"))
         self.btn_ders = self.make_button("📚 Ders Listesi Yükle", lambda: self.try_open("ders"))
         self.btn_ogr = self.make_button("👨‍🎓 Öğrenci Listesi Yükle", lambda: self.try_open("ogrenci"))
         self.btn_ogr_list = self.make_button("📋 Öğrenci Listesi", lambda: self.on_navigate("ogrenci_listesi"))
         self.btn_ders_list = self.make_button("📘 Ders Listesi", lambda: self.on_navigate("ders_listesi"))
         self.btn_exam = self.make_button("📅 Sınav Programı Oluştur", lambda: self.try_open("exam"))
-        self.btn_seating = self.make_button("🪑 Oturma Planı", lambda: self.try_open("seating"))  # ✅ Yeni buton
+        self.btn_seating = self.make_button("🪑 Oturma Planı", lambda: self.try_open("seating"))
 
-        # === Butonları ekle ===
         self.other_buttons = [
             self.btn_derslik, self.btn_ders, self.btn_ogr,
-            self.btn_ogr_list, self.btn_ders_list, self.btn_exam,
-            self.btn_seating
+            self.btn_ogr_list, self.btn_ders_list, self.btn_exam, self.btn_seating
         ]
         for b in self.other_buttons:
             self.layout.addWidget(b)
@@ -173,38 +223,67 @@ class DashboardPage(QtWidgets.QWidget):
         """)
         return b
 
-    def _update_role_visibility(self):
-        is_admin = self.user and self.user["role"] == "ADMIN"
-        self.btn_addcoord.setVisible(is_admin)
-
     # --------------------------------------------------------
-    # ERİŞİM KONTROLÜ (en az 5 derslik şartı)
+    # ERİŞİM KONTROLÜ
     # --------------------------------------------------------
     def has_enough_classrooms(self):
-        if not self.user or self.user["role"] == "ADMIN":
+        if not self.user or self.user["role"].strip().upper() == "ADMIN":
             return True
         row = fetchone("SELECT COUNT(*) AS cnt FROM classrooms WHERE department_id = %s",
                        (self.user["department_id"],))
         return row and row["cnt"] >= 5
 
+    def has_courses_loaded(self):
+        row = fetchone("SELECT COUNT(*) AS cnt FROM courses WHERE department_id = %s",
+                       (self.user["department_id"],))
+        return row and row["cnt"] > 0
+
+    def has_students_loaded(self):
+        row = fetchone("SELECT COUNT(*) AS cnt FROM student_course_summary WHERE department_id = %s",
+                       (self.user["department_id"],))
+        return row and row["cnt"] > 0
+
     def _update_accessibility(self):
         enough_cls = self.has_enough_classrooms()
-        is_admin = self.user and self.user["role"] == "ADMIN"
+        courses_loaded = self.has_courses_loaded()
+        students_loaded = self.has_students_loaded()
+        is_admin = self.user and self.user["role"].strip().upper() == "ADMIN"
 
-        # Diğer sayfalara erişim kontrolü
+        if is_admin:
+            for b in [self.btn_ders, self.btn_ogr, self.btn_ogr_list,
+                      self.btn_ders_list, self.btn_exam, self.btn_seating]:
+                b.setEnabled(True)
+            self.warning_label.clear()
+            return
+
+        # 1️⃣ Derslik 5'ten azsa hiçbir şey aktif değil
+        if not enough_cls:
+            for b in [self.btn_ders, self.btn_ogr, self.btn_ogr_list,
+                      self.btn_ders_list, self.btn_exam, self.btn_seating]:
+                b.setEnabled(False)
+            self.warning_label.setText("⚠️ En az 5 derslik girişi tamamlanmadan işlem yapılamaz.")
+            self.warning_label.setStyleSheet("color: orange;")
+            return
+
+        # 2️⃣ Derslik tamam ama Excel’ler yüklenmediyse sadece upload aktif
+        if enough_cls and not (courses_loaded and students_loaded):
+            self.btn_ders.setEnabled(True)
+            self.btn_ogr.setEnabled(True)
+            for b in [self.btn_ogr_list, self.btn_ders_list, self.btn_exam, self.btn_seating]:
+                b.setEnabled(False)
+            self.warning_label.setText("📚 Lütfen ders ve öğrenci listelerini yükleyin.")
+            self.warning_label.setStyleSheet("color: orange;")
+            return
+
+        # 3️⃣ Her şey tamam — tüm butonlar aktif
         for b in [self.btn_ders, self.btn_ogr, self.btn_ogr_list,
                   self.btn_ders_list, self.btn_exam, self.btn_seating]:
-            b.setEnabled(is_admin or enough_cls)
-
-        if not enough_cls and not is_admin:
-            self.warning_label.setText("⚠️ En az 5 derslik girişi tamamlanmadan diğer alanlara erişemezsiniz.")
-            self.warning_label.setStyleSheet("color: orange;")
-        else:
-            self.warning_label.clear()
+            b.setEnabled(True)
+        self.warning_label.clear()
 
     def try_open(self, page_name):
-        if not self.has_enough_classrooms() and self.user["role"] != "ADMIN":
-            self.show_message("⚠️ En az 5 derslik girişi tamamlanmadan diğer alanlara geçilemez.", "orange")
+        if not self.has_enough_classrooms() and self.user["role"].strip().upper() != "ADMIN":
+            self.show_message("⚠️ En az 5 derslik girişi tamamlanmadan geçilemez.", "orange")
             return
         self.on_navigate(page_name)
 
@@ -214,18 +293,8 @@ class DashboardPage(QtWidgets.QWidget):
     def toggle_addcoord_form(self):
         if self.addcoord_frame.isVisible():
             self.addcoord_frame.hide()
-            self.btn_addcoord.show()
-            for b in self.other_buttons:
-                b.show()
-            self.message_label.clear()
-            self.logout_btn.show()
         else:
             self.addcoord_frame.show()
-            self.btn_addcoord.hide()
-            for b in self.other_buttons:
-                b.hide()
-            self.warning_label.clear()
-            self.logout_btn.show()
 
     def save_coordinator(self):
         dept_id = self.dept_combo.currentData()
@@ -243,7 +312,7 @@ class DashboardPage(QtWidgets.QWidget):
             pw_hash = bcrypt.hashpw(p1.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
             create_coord(email=email, password_hash=pw_hash, department_id=dept_id)
             self.show_message("✅ Koordinatör başarıyla eklendi.", "green")
-            QtCore.QTimer.singleShot(2000, self.toggle_addcoord_form)
+            self.load_users()
         except Exception as e:
             self.show_message(f"❌ Hata: {str(e)}", "red")
 
@@ -251,6 +320,9 @@ class DashboardPage(QtWidgets.QWidget):
         self.message_label.setText(text)
         self.message_label.setStyleSheet(f"color:{color}; font-weight:bold;")
 
+    # --------------------------------------------------------
+    # ÇIKIŞ
+    # --------------------------------------------------------
     def logout_clicked(self):
         if self.on_logout:
             self.on_logout()

@@ -11,6 +11,7 @@ class ExamSchedulerPage(QtWidgets.QWidget):
         self.go_back = go_back
         self.service = ExamSchedulerService()
         self.generated_plan = []
+        self.selected_department_id = user.get("department_id")
 
         # Ana kaydırılabilir yapı
         self.scroll = QtWidgets.QScrollArea()
@@ -53,6 +54,27 @@ class ExamSchedulerPage(QtWidgets.QWidget):
         hinfo.addWidget(lbl_user)
         hinfo.addStretch(1)
         self.layout.addWidget(info_bar)
+
+        # === 🔹 Admin için Bölüm Seçimi ===
+        if self.user["role"].strip().upper() == "ADMIN":
+            dept_box = QtWidgets.QHBoxLayout()
+            dept_label = QtWidgets.QLabel("📘 Sınav Programı Oluşturulacak Bölüm:")
+            dept_label.setFont(QtGui.QFont("Segoe UI", 10, QtGui.QFont.Bold))
+
+            self.dept_combo = QtWidgets.QComboBox()
+            self.dept_combo.setFixedWidth(350)
+            self.dept_combo.addItem("— Bölüm Seçiniz —", None)
+            try:
+                depts = fetchall("SELECT id, name FROM departments ORDER BY name")
+                for d in depts:
+                    self.dept_combo.addItem(d["name"], d["id"])
+            except Exception as e:
+                print(f"[HATA] Bölümler yüklenemedi: {e}")
+
+            self.dept_combo.currentIndexChanged.connect(self._on_dept_changed)
+            dept_box.addWidget(dept_label)
+            dept_box.addWidget(self.dept_combo)
+            self.layout.addLayout(dept_box)
 
         # === Geri Dön ===
         back_btn = QtWidgets.QPushButton("⬅️ Geri Dön")
@@ -250,13 +272,34 @@ class ExamSchedulerPage(QtWidgets.QWidget):
         self.layout.addStretch(1)
 
     # ------------------------------------------------------------
+    def _on_dept_changed(self):
+        """Admin bölüm seçtiğinde dersleri yeniden yükler"""
+        dept_id = self.dept_combo.currentData()
+        if dept_id:
+            self.selected_department_id = dept_id
+            self._load_courses()
+        else:
+            self.selected_department_id = None
+            self.course_list.clear()
+            self.custom_duration_table.setRowCount(0)
+
+    # ------------------------------------------------------------
     def _load_courses(self):
         try:
+            if self.user["role"].strip().upper() == "ADMIN":
+                if not self.selected_department_id:
+                    self.course_list.clear()
+                    self.custom_duration_table.setRowCount(0)
+                    return
+                dept_id = self.selected_department_id
+            else:
+                dept_id = self.user["department_id"]
+
             rows = fetchall("""
                 SELECT code, name FROM courses
                 WHERE department_id = %s
                 ORDER BY code
-            """, (self.user["department_id"],))
+            """, (dept_id,))
             self.course_list.clear()
             self.custom_duration_table.setRowCount(len(rows))
             for idx, r in enumerate(rows):
@@ -271,26 +314,28 @@ class ExamSchedulerPage(QtWidgets.QWidget):
 
     # ------------------------------------------------------------
     def _on_generate_clicked(self):
-        # Hariç tutulacak dersleri al
+        if self.user["role"].strip().upper() == "ADMIN" and not self.selected_department_id:
+            QtWidgets.QMessageBox.warning(self, "Uyarı", "Lütfen önce bir bölüm seçin.")
+            return
+
+        dept_id = self.selected_department_id if self.user["role"].strip().upper() == "ADMIN" else self.user["department_id"]
+
         all_items = [self.course_list.item(i) for i in range(self.course_list.count())]
         all_courses = [it.text().split("—")[0].strip() for it in all_items]
         excluded = [i.text().split("—")[0].strip() for i in self.course_list.selectedItems()]
         included_courses = [c for c in all_courses if c not in excluded]
 
-        # Tarihler
         start_date = self.start_date.date().toString("dd.MM.yyyy")
         end_date = self.end_date.date().toString("dd.MM.yyyy")
         holidays = []
         if self.chk_sat.isChecked(): holidays.append("SAT")
         if self.chk_sun.isChecked(): holidays.append("SUN")
 
-        # Tür & süre
         exam_type = self.exam_type.currentText()
         default_duration = self.spin_duration.value()
         gap_duration = self.spin_gap.value()
         no_overlap = self.chk_no_overlap.isChecked()
 
-        # Ders bazlı özel süreler
         custom_durations = {}
         for row in range(self.custom_duration_table.rowCount()):
             code_item = self.custom_duration_table.item(row, 0)
@@ -302,9 +347,8 @@ class ExamSchedulerPage(QtWidgets.QWidget):
             if val != default_duration:
                 custom_durations[code] = val
 
-        # Program oluştur
         plan = self.service.generate_schedule(
-            department_id=self.user["department_id"],
+            department_id=dept_id,
             included_courses=included_courses,
             start_date=start_date,
             end_date=end_date,
@@ -317,8 +361,16 @@ class ExamSchedulerPage(QtWidgets.QWidget):
         )
 
         if self.service.errors:
-            QtWidgets.QMessageBox.critical(self, "Hata",
-                "Sınav programı oluşturulamadı:\n" + "\n".join(self.service.errors))
+            # 🔹 Geliştirilmiş hata görünümü (HTML formatlı)
+            formatted_errors = "<ul style='margin-left:15px; color:#c0392b;'>"
+            for err in self.service.errors:
+                formatted_errors += f"<li>{err}</li>"
+            formatted_errors += "</ul>"
+            QtWidgets.QMessageBox.critical(
+                self,
+                "❌ Sınav Programı Oluşturulamadı",
+                f"<b>Aşağıdaki hatalar nedeniyle program oluşturulamadı:</b><br>{formatted_errors}"
+            )
             return
 
         self.generated_plan = plan
