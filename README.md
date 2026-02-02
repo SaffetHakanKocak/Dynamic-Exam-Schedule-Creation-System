@@ -56,6 +56,7 @@ bu sistem sayesinde **minimum seviyeye indirilir**.
 ---
 
 ## 🏗️ Yazılım Mimarisi
+
 ```text
 UI (PyQt5)
 │
